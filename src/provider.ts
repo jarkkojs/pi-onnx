@@ -127,78 +127,19 @@ export function createOnnxStreamFunction(config: Config) {
 
 			let contentIndex = -1;
 			let accumulated = "";
-			let thinkingIndex = -1;
-			let thinkingText = "";
 
 			stream.push({ type: "start", partial: output });
-
-			const openThinking = () => {
-				if (thinkingIndex >= 0) return;
-				output.content.push({ type: "thinking", thinking: "" });
-				thinkingIndex = output.content.length - 1;
-				stream.push({ type: "thinking_start", contentIndex: thinkingIndex, partial: output });
-			};
-			const appendThinking = (line: string) => {
-				openThinking();
-				const delta = thinkingText ? `\n${line}` : line;
-				thinkingText += delta;
-				(output.content[thinkingIndex] as { thinking: string }).thinking = thinkingText;
-				stream.push({ type: "thinking_delta", contentIndex: thinkingIndex, delta, partial: output });
-			};
-			const closeThinking = () => {
-				if (thinkingIndex < 0) return;
-				stream.push({
-					type: "thinking_end",
-					contentIndex: thinkingIndex,
-					content: thinkingText,
-					partial: output,
-				});
-			};
-
 			try {
 				await configureRuntime(config);
 
 				const entry = findModelEntry(config, model.id);
 				const dtype = resolveDtype(config, entry);
 				const fullModelId = hubPath(model.id);
-				const seenPct = new Map<string, number>();
-				let sessionHintTimer: ReturnType<typeof setTimeout> | null = null;
-				const armSessionHint = () => {
-					if (sessionHintTimer) clearTimeout(sessionHintTimer);
-					sessionHintTimer = setTimeout(() => {
-						appendThinking(`downloads idle — constructing ONNX session (may take minutes on CPU)…`);
-					}, 5000);
-				};
+
 				const { pipeline } = await loadPipeline("text-generation", fullModelId, {
 					device: config.device,
 					dtype,
-					onProgress: (info) => {
-						const p = info as { status?: string; file?: string; name?: string; progress?: number; loaded?: number; total?: number };
-						if (!p?.status) return;
-
-						if (p.status === "progress_total") {
-							// Aggregate progress across all files — cleaner than per-file noise.
-							const pct = Math.round(p.progress ?? 0);
-							const totalMB = ((p.total ?? 0) / 1e6).toFixed(1);
-							if (pct > 0 && pct < 100) {
-								armSessionHint();
-								appendThinking(`downloading model… ${pct}% (${totalMB} MB)`);
-							}
-						} else if (p.status === "progress" && p.file) {
-							// Fallback: per-file progress (used when progress_total is unavailable).
-							const pct = Math.round(p.progress ?? 0);
-							const fileShort = p.file.split("/").pop() ?? p.file;
-							const last = seenPct.get(fileShort) ?? -1;
-							if (pct - last < 10 && pct !== 100) return;
-							seenPct.set(fileShort, pct);
-							appendThinking(`${fileShort}: ${pct}%`);
-						} else if (p.status === "ready") {
-							appendThinking(`model ready`);
-						}
-					},
 				});
-				if (sessionHintTimer) clearTimeout(sessionHintTimer);
-				closeThinking();
 
 				const tokenizer = pipeline.tokenizer;
 				const chat = toChatMessages(context.systemPrompt, context.messages);
@@ -294,7 +235,6 @@ export function createOnnxStreamFunction(config: Config) {
 				const aborted = options?.signal?.aborted === true;
 				output.stopReason = aborted ? "aborted" : "error";
 				output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-				closeThinking();
 				if (contentIndex >= 0) {
 					stream.push({
 						type: "text_end",

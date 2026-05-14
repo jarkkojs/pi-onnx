@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (C) Jarkko Sakkinen 2026
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { configPath, hubPath, loadConfig, stripPrefix, type Config, type ModelEntry } from "./config.js";
 import { discoverOnnxCommunityModels, type DiscoveredModel } from "./discovery.js";
 import { createOnnxStreamFunction, ONNX_API, ONNX_PROVIDER } from "./provider.js";
@@ -43,6 +43,95 @@ function mergeModels(pinned: ModelEntry[], discovered: DiscoveredModel[]): Model
 	return out;
 }
 
+const WIDGET_KEY = "onnx-preload";
+
+async function preloadModel(config: Config, entry: ModelEntry, ctx: ExtensionContext): Promise<void> {
+	const fullId = hubPath(entry.id);
+	const dtype = entry.dtype ?? config.defaultDtype;
+	const label = entry.name ?? stripPrefix(entry.id);
+
+	const show = (line: string) => {
+		ctx.ui.setWidget(WIDGET_KEY, [line]);
+		ctx.ui.setStatus("onnx", line);
+	};
+	const clear = () => {
+		ctx.ui.setWidget(WIDGET_KEY, undefined);
+		ctx.ui.setStatus("onnx", undefined);
+	};
+
+	try {
+		await configureRuntime(config);
+
+		const seenPct = new Map<string, number>();
+		let sessionHintTimer: ReturnType<typeof setTimeout> | null = null;
+		let readySeen = false;
+
+		const armSessionHint = () => {
+			if (sessionHintTimer) clearTimeout(sessionHintTimer);
+			sessionHintTimer = setTimeout(() => {
+				show(`ONNX │ ${label} │ constructing session\u2026`);
+			}, 5000);
+		};
+
+		armSessionHint();
+
+		await loadPipeline("text-generation", fullId, {
+			device: config.device,
+			dtype,
+			onProgress: (info: unknown) => {
+				const p = info as {
+					status?: string;
+					file?: string;
+					name?: string;
+					progress?: number;
+					loaded?: number;
+					total?: number;
+				};
+				if (!p?.status) return;
+
+				if (p.status === "initiate") {
+					armSessionHint();
+				} else if (p.status === "progress_total") {
+					const pct = Math.round(p.progress ?? 0);
+					const totalMB = ((p.total ?? 0) / 1e6).toFixed(1);
+					if (pct > 0 && pct < 100) {
+						armSessionHint();
+						show(`ONNX │ ${label} │ ${pct}% of ${totalMB} MB`);
+					}
+				} else if (p.status === "progress" && p.file) {
+					// Fallback: per-file progress when progress_total is not available.
+					const pct = Math.round(p.progress ?? 0);
+					const fileShort = p.file.split("/").pop() ?? p.file;
+					const last = seenPct.get(fileShort) ?? -1;
+					if (pct - last < 10 && pct !== 100) return;
+					seenPct.set(fileShort, pct);
+					show(`ONNX │ ${label} │ ${fileShort}: ${pct}%`);
+				} else if (p.status === "done" && p.file) {
+					const fileShort = p.file.split("/").pop() ?? p.file;
+					show(`ONNX │ ${label} │ ${fileShort} \u2713`);
+					armSessionHint();
+				} else if (p.status === "ready") {
+					readySeen = true;
+					if (sessionHintTimer) clearTimeout(sessionHintTimer);
+					ctx.ui.setStatus("onnx", `ONNX \u2713 ${label} ready`);
+					ctx.ui.setWidget(WIDGET_KEY, undefined);
+					setTimeout(clear, 4000);
+				}
+			},
+		});
+
+		if (sessionHintTimer) clearTimeout(sessionHintTimer);
+
+		if (!readySeen) {
+			// Pipeline was served from memory cache — no progress events fired.
+			clear();
+		}
+	} catch {
+		ctx.ui.setWidget(WIDGET_KEY, undefined);
+		ctx.ui.setStatus("onnx", undefined);
+	}
+}
+
 export default function (pi: ExtensionAPI) {
 	const config = loadConfig();
 	const streamSimple = createOnnxStreamFunction(config);
@@ -69,62 +158,23 @@ export default function (pi: ExtensionAPI) {
 
 	registerAllTools(pi, config);
 
-	// Pre-warm the default model on session start so the first message
-	// doesn't make the user stare at a spinner for minutes.
+	// Pre-warm the default model on session start.
 	pi.on("session_start", async (_event, ctx) => {
 		const defaultModel = config.models[0];
 		if (!defaultModel) return;
+		await preloadModel(config, defaultModel, ctx);
+	});
 
-		const fullId = hubPath(defaultModel.id);
-		const dtype = defaultModel.dtype ?? config.defaultDtype;
-		const widgetKey = "onnx-preload";
-
-		const show = (lines: string[]) => {
-			ctx.ui.setWidget(widgetKey, lines);
-			if (lines.length > 0) ctx.ui.setStatus("onnx", lines[0]!);
-		};
-
-		// Try to load the model in the background
-		try {
-			await loadPipeline("text-generation", fullId, {
-				device: config.device,
-				dtype,
-				onProgress: (info: unknown) => {
-					const p = info as { status?: string; file?: string; name?: string; progress?: number; loaded?: number; total?: number };
-					if (!p?.status) return;
-
-					const fileShort = (p.file ?? p.name ?? "").split("/").pop() ?? "";
-
-					if (p.status === "progress" && fileShort) {
-						const pct = Math.round(p.progress ?? 0);
-						const totalMB = ((p.total ?? 0) / 1e6).toFixed(1);
-						show([`ONNX │ Loading ${defaultModel.id} │ ${fileShort}: ${pct}% of ${totalMB} MB`]);
-					} else if (p.status === "progress_total") {
-						const pct = Math.round(p.progress ?? 0);
-						const totalMB = ((p.total ?? 0) / 1e6).toFixed(1);
-						show([`ONNX │ Loading ${defaultModel.id} │ ${pct}% (${totalMB} MB total)`]);
-					} else if (p.status === "done" && fileShort) {
-						show([`ONNX │ ${fileShort} downloaded, constructing session…`]);
-					} else if (p.status === "ready") {
-						ctx.ui.setStatus("onnx", `ONNX ✓ ${defaultModel.id} ready`);
-						setTimeout(() => {
-							ctx.ui.setWidget(widgetKey, undefined);
-							ctx.ui.setStatus("onnx", undefined);
-						}, 4000);
-					}
-				},
-			});
-			show([`ONNX ✓ ${defaultModel.id} cached`]);
-			setTimeout(() => {
-				ctx.ui.setWidget(widgetKey, undefined);
-				ctx.ui.setStatus("onnx", undefined);
-			}, 2000);
-		} catch {
-			ctx.ui.setWidget(widgetKey, undefined);
-			ctx.ui.setStatus("onnx", undefined);
-	}
-	}
-	);
+	// Start downloading/loading as soon as the user picks an ONNX model.
+	pi.on("model_select", async (event, ctx) => {
+		if (event.model.provider !== ONNX_PROVIDER) return;
+		const fullId = hubPath(event.model.id);
+		const entry =
+			config.models.find((m) => m.id === fullId) ??
+			discovered.find((m) => m.id === fullId) ??
+			({ id: fullId } as ModelEntry);
+		await preloadModel(config, entry, ctx);
+	});
 
 	pi.registerCommand("onnx", {
 		description: "Show pi-onnx configuration",
