@@ -2,10 +2,11 @@
 // Copyright (C) Jarkko Sakkinen 2026
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { configPath, loadConfig, stripPrefix, type Config, type ModelEntry } from "./config.js";
+import { configPath, hubPath, loadConfig, stripPrefix, type Config, type ModelEntry } from "./config.js";
 import { discoverOnnxCommunityModels, type DiscoveredModel } from "./discovery.js";
 import { createOnnxStreamFunction, ONNX_API, ONNX_PROVIDER } from "./provider.js";
 import { registerAllTools } from "./tools.js";
+import { configureRuntime, loadPipeline } from "./runtime.js";
 
 function buildProviderConfig(
 	models: ModelEntry[],
@@ -67,6 +68,63 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	registerAllTools(pi, config);
+
+	// Pre-warm the default model on session start so the first message
+	// doesn't make the user stare at a spinner for minutes.
+	pi.on("session_start", async (_event, ctx) => {
+		const defaultModel = config.models[0];
+		if (!defaultModel) return;
+
+		const fullId = hubPath(defaultModel.id);
+		const dtype = defaultModel.dtype ?? config.defaultDtype;
+		const widgetKey = "onnx-preload";
+
+		const show = (lines: string[]) => {
+			ctx.ui.setWidget(widgetKey, lines);
+			if (lines.length > 0) ctx.ui.setStatus("onnx", lines[0]!);
+		};
+
+		// Try to load the model in the background
+		try {
+			await loadPipeline("text-generation", fullId, {
+				device: config.device,
+				dtype,
+				onProgress: (info: unknown) => {
+					const p = info as { status?: string; file?: string; name?: string; progress?: number; loaded?: number; total?: number };
+					if (!p?.status) return;
+
+					const fileShort = (p.file ?? p.name ?? "").split("/").pop() ?? "";
+
+					if (p.status === "progress" && fileShort) {
+						const pct = Math.round(p.progress ?? 0);
+						const totalMB = ((p.total ?? 0) / 1e6).toFixed(1);
+						show([`ONNX │ Loading ${defaultModel.id} │ ${fileShort}: ${pct}% of ${totalMB} MB`]);
+					} else if (p.status === "progress_total") {
+						const pct = Math.round(p.progress ?? 0);
+						const totalMB = ((p.total ?? 0) / 1e6).toFixed(1);
+						show([`ONNX │ Loading ${defaultModel.id} │ ${pct}% (${totalMB} MB total)`]);
+					} else if (p.status === "done" && fileShort) {
+						show([`ONNX │ ${fileShort} downloaded, constructing session…`]);
+					} else if (p.status === "ready") {
+						ctx.ui.setStatus("onnx", `ONNX ✓ ${defaultModel.id} ready`);
+						setTimeout(() => {
+							ctx.ui.setWidget(widgetKey, undefined);
+							ctx.ui.setStatus("onnx", undefined);
+						}, 4000);
+					}
+				},
+			});
+			show([`ONNX ✓ ${defaultModel.id} cached`]);
+			setTimeout(() => {
+				ctx.ui.setWidget(widgetKey, undefined);
+				ctx.ui.setStatus("onnx", undefined);
+			}, 2000);
+		} catch {
+			ctx.ui.setWidget(widgetKey, undefined);
+			ctx.ui.setStatus("onnx", undefined);
+	}
+	}
+	);
 
 	pi.registerCommand("onnx", {
 		description: "Show pi-onnx configuration",

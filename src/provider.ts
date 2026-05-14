@@ -173,16 +173,25 @@ export function createOnnxStreamFunction(config: Config) {
 					device: config.device,
 					dtype,
 					onProgress: (info) => {
-						const p = info as { status?: string; file?: string; name?: string; progress?: number };
+						const p = info as { status?: string; file?: string; name?: string; progress?: number; loaded?: number; total?: number };
 						if (!p?.status) return;
-						armSessionHint();
-						const file = p.file ?? p.name ?? "";
-						if (p.status === "progress" && file) {
+
+						if (p.status === "progress_total") {
+							// Aggregate progress across all files — cleaner than per-file noise.
 							const pct = Math.round(p.progress ?? 0);
-							const last = seenPct.get(file) ?? -1;
+							const totalMB = ((p.total ?? 0) / 1e6).toFixed(1);
+							if (pct > 0 && pct < 100) {
+								armSessionHint();
+								appendThinking(`downloading model… ${pct}% (${totalMB} MB)`);
+							}
+						} else if (p.status === "progress" && p.file) {
+							// Fallback: per-file progress (used when progress_total is unavailable).
+							const pct = Math.round(p.progress ?? 0);
+							const fileShort = p.file.split("/").pop() ?? p.file;
+							const last = seenPct.get(fileShort) ?? -1;
 							if (pct - last < 10 && pct !== 100) return;
-							seenPct.set(file, pct);
-							appendThinking(`${file}: ${pct}%`);
+							seenPct.set(fileShort, pct);
+							appendThinking(`${fileShort}: ${pct}%`);
 						} else if (p.status === "ready") {
 							appendThinking(`model ready`);
 						}
