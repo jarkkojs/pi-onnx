@@ -1,6 +1,6 @@
-# pi-provider-onnx-community
+# pi-onnx
 
-Runs [Hugging Face onnx-community](https://huggingface.co/onnx-community) models locally inside
+Runs [Hugging Face onnx-community](https://huggingface.co/onnx-community) models locally inside the pi coding agent using [`@huggingface/transformers`](https://www.npmjs.com/package/@huggingface/transformers).
 the Pi coding agent using [`@huggingface/transformers`](https://www.npmjs.com/package/@huggingface/transformers).
 
 Implements a chat provider and several tool calls:
@@ -13,7 +13,7 @@ Implements a chat provider and several tool calls:
 ## Install
 
 ```sh
-pi install npm:pi-provider-onnx-community
+pi install npm:pi-onnx
 ```
 
 ## Configure
@@ -21,7 +21,7 @@ pi install npm:pi-provider-onnx-community
 Copy `example-config.json` from this package as a starting point:
 
 ```sh
-cp example-config.json ~/.pi/agent/onnx-community.json
+cp example-config.json ~/.pi/agent/pi-onnx.json
 ```
 
 ### Top-level
@@ -105,5 +105,5 @@ Example:
 
 ## License
 
-`pi-provider-onnx-community` is licensed under `MIT`. See [LICENSE](LICENSE)
+`pi-onnx` is licensed under `MIT`. See [LICENSE](LICENSE)
 for more information.

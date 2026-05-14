@@ -12,8 +12,8 @@ function buildProviderConfig(
 	streamSimple: ReturnType<typeof createOnnxStreamFunction>,
 ) {
 	return {
-		baseUrl: "local://onnx-community",
-		keyless: true,
+		baseUrl: "local://onnx",
+		apiKey: "onnx",
 		api: ONNX_API,
 		models: models.map((m) => {
 			const short = stripPrefix(m.id);
@@ -68,8 +68,8 @@ export default function (pi: ExtensionAPI) {
 
 	registerAllTools(pi, config);
 
-	pi.registerCommand("onnx-community", {
-		description: "Show pi-provider-onnx-community config status",
+	pi.registerCommand("onnx", {
+		description: "Show pi-onnx configuration",
 		handler: async (_args, ctx) => {
 			const lines: string[] = [];
 			lines.push(`config: ${configPath()}`);

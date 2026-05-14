@@ -107,7 +107,7 @@ const DEFAULTS: Config = {
 };
 
 export function configPath(): string {
-	return join(homedir(), ".pi", "agent", "onnx-community.json");
+	return join(homedir(), ".pi", "agent", "pi-onnx.json");
 }
 
 export function loadConfig(): Config {
@@ -124,7 +124,7 @@ export function loadConfig(): Config {
 		parsed = JSON.parse(raw);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
-		throw new Error(`pi-provider-onnx-community: failed to parse ${path}: ${msg}`);
+		throw new Error(`pi-onnx: failed to parse ${path}: ${msg}`);
 	}
 
 	return mergeConfig(parsed);

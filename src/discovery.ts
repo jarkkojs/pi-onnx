@@ -33,7 +33,7 @@ async function fetchByPipelineTag(
 
 	const res = await fetch(url, {
 		signal,
-		headers: { "User-Agent": "pi-provider-onnx-community" },
+		headers: { "User-Agent": "pi-onnx" },
 	});
 	if (!res.ok) throw new Error(`HF Hub ${res.status} ${res.statusText}`);
 	return (await res.json()) as HubModel[];

@@ -16,8 +16,8 @@ import { calculateCost, createAssistantMessageEventStream } from "@earendil-work
 import { hubPath, type Config, type Dtype, type ModelEntry } from "./config.js";
 import { configureRuntime, getTextStreamer, loadPipeline } from "./runtime.js";
 
-export const ONNX_API: Api = "onnx-community";
-export const ONNX_PROVIDER = "onnx-community";
+export const ONNX_API: Api = "onnx";
+export const ONNX_PROVIDER = "onnx";
 
 interface ChatMessage {
 	role: "system" | "user" | "assistant";
