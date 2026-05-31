@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (C) Jarkko Sakkinen 2026
 
-import { HF_PREFIX, type PipelineTag } from "./config.js";
+import { HF_PREFIX, type Dtype, type PipelineTag } from "./config.js";
 
 export interface DiscoveredModel {
 	id: string;
 	name: string;
+	dtype?: Dtype;
 }
 
 export interface DiscoveryOptions {
@@ -14,9 +15,83 @@ export interface DiscoveryOptions {
 	signal?: AbortSignal;
 }
 
+interface HubSibling {
+	rfilename?: string;
+}
+
 interface HubModel {
 	id?: string;
 	modelId?: string;
+	library_name?: string;
+	pipeline_tag?: string;
+	tags?: string[];
+	siblings?: HubSibling[];
+}
+
+const TRANSFORMERS_JS = "transformers.js";
+const SUPPORTED_PIPELINE_TAG: PipelineTag = "text-generation";
+
+const DTYPE_SUFFIXES: Record<Dtype, string> = {
+	fp32: "",
+	fp16: "_fp16",
+	q8: "_quantized",
+	int8: "_int8",
+	uint8: "_uint8",
+	q4: "_q4",
+	bnb4: "_bnb4",
+	q4f16: "_q4f16",
+};
+
+const DISCOVERY_DTYPE_PREFERENCE: readonly Dtype[] = [
+	"q4",
+	"q4f16",
+	"bnb4",
+	"q8",
+	"int8",
+	"uint8",
+	"fp16",
+	"fp32",
+];
+
+function modelId(model: HubModel): string | undefined {
+	return model.id ?? model.modelId;
+}
+
+function isTransformersJsTextGenerationModel(model: HubModel): boolean {
+	const tags = model.tags ?? [];
+	const usesTransformersJs = model.library_name === TRANSFORMERS_JS || tags.includes(TRANSFORMERS_JS);
+	const isTextGeneration = model.pipeline_tag
+		? model.pipeline_tag === SUPPORTED_PIPELINE_TAG
+		: tags.includes(SUPPORTED_PIPELINE_TAG);
+	return usesTransformersJs && isTextGeneration;
+}
+
+function siblingFileSet(model: HubModel): Set<string> {
+	return new Set(
+		(model.siblings ?? [])
+			.map((sibling) => sibling.rfilename)
+			.filter((filename): filename is string => typeof filename === "string"),
+	);
+}
+
+function hasModelFile(files: Set<string>, dtype: Dtype): boolean {
+	return files.has(`onnx/model${DTYPE_SUFFIXES[dtype]}.onnx`);
+}
+
+function preferredDtype(model: HubModel): Dtype | undefined {
+	const files = siblingFileSet(model);
+	return DISCOVERY_DTYPE_PREFERENCE.find((dtype) => hasModelFile(files, dtype));
+}
+
+function toDiscoveredModel(model: HubModel): DiscoveredModel | undefined {
+	const id = modelId(model);
+	if (!id || !id.startsWith(HF_PREFIX)) return undefined;
+	if (!isTransformersJsTextGenerationModel(model)) return undefined;
+
+	const dtype = preferredDtype(model);
+	if (!dtype) return undefined;
+
+	return { id, name: id.slice(HF_PREFIX.length), dtype };
 }
 
 async function fetchByPipelineTag(
@@ -30,6 +105,7 @@ async function fetchByPipelineTag(
 	url.searchParams.set("sort", "downloads");
 	url.searchParams.set("direction", "-1");
 	url.searchParams.set("limit", String(limit));
+	url.searchParams.set("full", "true");
 
 	const res = await fetch(url, {
 		signal,
@@ -48,12 +124,11 @@ export async function discoverOnnxCommunityModels(opts: DiscoveryOptions): Promi
 	const seen = new Set<string>();
 	const out: DiscoveredModel[] = [];
 	for (const list of results) {
-		for (const m of list) {
-			const id = m.id ?? m.modelId;
-			if (!id || !id.startsWith(HF_PREFIX)) continue;
-			if (seen.has(id)) continue;
-			seen.add(id);
-			out.push({ id, name: id.slice(HF_PREFIX.length) });
+		for (const model of list) {
+			const discovered = toDiscoveredModel(model);
+			if (!discovered || seen.has(discovered.id)) continue;
+			seen.add(discovered.id);
+			out.push(discovered);
 		}
 	}
 	return out;

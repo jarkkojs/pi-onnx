@@ -38,7 +38,7 @@ function mergeModels(pinned: ModelEntry[], discovered: DiscoveredModel[]): Model
 	for (const d of discovered) {
 		if (seen.has(d.id)) continue;
 		seen.add(d.id);
-		out.push({ id: d.id, name: d.name });
+		out.push({ id: d.id, name: d.name, dtype: d.dtype });
 	}
 	return out;
 }
@@ -140,7 +140,6 @@ async function preloadModel(config: Config, entry: ModelEntry, ctx: ExtensionCon
 
 export default async function (pi: ExtensionAPI) {
 	const config = loadConfig();
-	const streamSimple = createOnnxStreamFunction(config);
 	let discovered: DiscoveredModel[] = [];
 	let discoveryError: string | null = null;
 
@@ -155,26 +154,25 @@ export default async function (pi: ExtensionAPI) {
 		}
 	}
 
-	pi.registerProvider(ONNX_PROVIDER, buildProviderConfig(mergeModels(config.models, discovered), streamSimple));
+	const effectiveConfig: Config = { ...config, models: mergeModels(config.models, discovered) };
+	const streamSimple = createOnnxStreamFunction(effectiveConfig);
+	pi.registerProvider(ONNX_PROVIDER, buildProviderConfig(effectiveConfig.models, streamSimple));
 
 	registerAllTools(pi, config);
 
 	pi.on("session_start", async (_event, ctx) => {
 		if (!config.preloadDefaultModel) return;
-		const defaultModel = config.models[0];
+		const defaultModel = effectiveConfig.models[0];
 		if (!defaultModel) return;
-		await preloadModel(config, defaultModel, ctx);
+		await preloadModel(effectiveConfig, defaultModel, ctx);
 	});
 
 	// Start downloading/loading as soon as the user picks an ONNX model.
 	pi.on("model_select", async (event, ctx) => {
 		if (event.model.provider !== ONNX_PROVIDER) return;
 		const fullId = hubPath(event.model.id);
-		const entry =
-			config.models.find((m) => m.id === fullId) ??
-			discovered.find((m) => m.id === fullId) ??
-			({ id: fullId } as ModelEntry);
-		await preloadModel(config, entry, ctx);
+		const entry = effectiveConfig.models.find((m) => m.id === fullId) ?? ({ id: fullId } as ModelEntry);
+		await preloadModel(effectiveConfig, entry, ctx);
 	});
 
 	pi.registerCommand("onnx", {
@@ -197,7 +195,7 @@ export default async function (pi: ExtensionAPI) {
 			}
 			lines.push(`discovered models: ${discovered.length}`);
 			for (const m of discovered.slice(0, 20)) {
-				lines.push(`  - ${m.id}`);
+				lines.push(`  - ${m.id}  dtype=${m.dtype ?? config.defaultDtype}`);
 			}
 			if (discovered.length > 20) {
 				lines.push(`  ... and ${discovered.length - 20} more`);

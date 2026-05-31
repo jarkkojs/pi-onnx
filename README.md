@@ -32,7 +32,7 @@ cp example-config.json ~/.pi/agent/pi-onnx.json
 | `defaultDtype`        | `Dtype`                                | `"q4"`                            | Per-model `dtype` overrides this.                         |
 | `preloadDefaultModel` | `boolean`                              | `false`                           | Preload the first configured model on session start.      |
 | `models`              | `ModelEntry[]`                         | `[Qwen2.5-Coder-0.5B-Instruct]`   | Each entry becomes a `onnx-community/<id>` chat model.    |
-| `discovery`           | object                                 | enabled, limit 50                 | Append popular `onnx-community/*` models from the HF Hub. |
+| `discovery`           | object                                 | enabled, limit 50                 | Append compatible `onnx-community/*` models from the HF Hub. |
 | `tools`               | object                                 | `embed` only                      | Toggles for `onnx_embed` / `_classify` / `_transcribe`.   |
 
 `Dtype` is one of `"fp32"`, `"fp16"`, `"q8"`, `"int8"`, `"uint8"`, `"q4"`, `"bnb4"`, `"q4f16"`.
@@ -67,7 +67,9 @@ Example:
 | -------------- | --------------- | ----------------------------------------------------------- | --------------------------------------- |
 | `enabled`      | `boolean`       | `true`                                                      | Append discovered models to `models[]`. |
 | `limit`        | `number`        | `50`                                                        | Per pipeline tag.                       |
-| `pipelineTags` | `PipelineTag[]` | `["text-generation", "image-text-to-text", "any-to-any"]`   | Hugging Face pipeline tags to scan.     |
+| `pipelineTags` | `PipelineTag[]` | `["text-generation"]`                                      | Hugging Face pipeline tags to scan.     |
+
+Discovery only registers `transformers.js` text-generation repositories that expose a supported `onnx/model*.onnx` file. It also records the matching dtype, so models such as `gpt-oss-20b-ONNX` use `q4f16` instead of the global default `q4`.
 
 ### `tools.embed`
 

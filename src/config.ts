@@ -73,6 +73,7 @@ export interface Config {
 const DTYPES: readonly Dtype[] = ["fp32", "fp16", "q8", "int8", "uint8", "q4", "bnb4", "q4f16"];
 const DEVICES: readonly Device[] = ["cpu", "webgpu", "wasm", "gpu"];
 const PIPELINE_TAGS: readonly PipelineTag[] = ["text-generation", "image-text-to-text", "any-to-any"];
+const DEFAULT_DISCOVERY_PIPELINE_TAGS: readonly PipelineTag[] = ["text-generation"];
 const POOLING_VALUES: readonly EmbedToolConfig["pooling"][] = ["mean", "cls"];
 const TRANSCRIBE_TASKS: readonly TranscribeToolConfig["task"][] = ["transcribe", "translate"];
 const DEFAULT_MAX_DECODED_BYTES = 256 * 1024 * 1024;
@@ -93,7 +94,7 @@ const DEFAULTS: Config = {
 	discovery: {
 		enabled: true,
 		limit: 50,
-		pipelineTags: [...PIPELINE_TAGS],
+		pipelineTags: [...DEFAULT_DISCOVERY_PIPELINE_TAGS],
 	},
 	tools: {
 		embed: {

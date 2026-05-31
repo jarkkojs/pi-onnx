@@ -6,7 +6,7 @@
   "discovery": {
     "enabled": true,
     "limit": 50,
-    "pipelineTags": ["text-generation", "image-text-to-text", "any-to-any"]
+    "pipelineTags": ["text-generation"]
   },
   "models": [
     {
