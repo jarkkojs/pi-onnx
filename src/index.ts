@@ -138,29 +138,24 @@ async function preloadModel(config: Config, entry: ModelEntry, ctx: ExtensionCon
 }
 }
 
-export default function (pi: ExtensionAPI) {
+export default async function (pi: ExtensionAPI) {
 	const config = loadConfig();
 	const streamSimple = createOnnxStreamFunction(config);
 	let discovered: DiscoveredModel[] = [];
 	let discoveryError: string | null = null;
 
-	pi.registerProvider(ONNX_PROVIDER, buildProviderConfig(config.models, streamSimple));
-
 	if (config.discovery.enabled) {
-		discoverOnnxCommunityModels({
-			limit: config.discovery.limit,
-			pipelineTags: config.discovery.pipelineTags,
-		})
-			.then((found) => {
-				discovered = found;
-				const merged = mergeModels(config.models, found);
-				if (merged.length === config.models.length) return;
-				pi.registerProvider(ONNX_PROVIDER, buildProviderConfig(merged, streamSimple));
-			})
-			.catch((err) => {
-				discoveryError = err instanceof Error ? err.message : String(err);
+		try {
+			discovered = await discoverOnnxCommunityModels({
+				limit: config.discovery.limit,
+				pipelineTags: config.discovery.pipelineTags,
 			});
+		} catch (err) {
+			discoveryError = err instanceof Error ? err.message : String(err);
+		}
 	}
+
+	pi.registerProvider(ONNX_PROVIDER, buildProviderConfig(mergeModels(config.models, discovered), streamSimple));
 
 	registerAllTools(pi, config);
 
