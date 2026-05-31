@@ -32,12 +32,25 @@ function buildProviderConfig(
 	};
 }
 
-function mergeModels(pinned: ModelEntry[], discovered: DiscoveredModel[]): ModelEntry[] {
-	const seen = new Set(pinned.map((m) => m.id));
-	const out: ModelEntry[] = [...pinned];
+export function mergeModels(pinned: ModelEntry[], discovered: DiscoveredModel[]): ModelEntry[] {
+	const discoveredById = new Map(discovered.map((model) => [hubPath(model.id), model]));
+	const seen = new Set<string>();
+	const out: ModelEntry[] = pinned.map((model) => {
+		const fullId = hubPath(model.id);
+		seen.add(fullId);
+		const discoveredModel = discoveredById.get(fullId);
+		if (!discoveredModel) return model;
+		return {
+			...model,
+			name: model.name ?? discoveredModel.name,
+			dtype: model.dtype ?? discoveredModel.dtype,
+		};
+	});
+
 	for (const d of discovered) {
-		if (seen.has(d.id)) continue;
-		seen.add(d.id);
+		const fullId = hubPath(d.id);
+		if (seen.has(fullId)) continue;
+		seen.add(fullId);
 		out.push({ id: d.id, name: d.name, dtype: d.dtype });
 	}
 	return out;

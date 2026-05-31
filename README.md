@@ -69,7 +69,7 @@ Example:
 | `limit`        | `number`        | `50`                                                        | Per pipeline tag.                       |
 | `pipelineTags` | `PipelineTag[]` | `["text-generation"]`                                      | Hugging Face pipeline tags to scan.     |
 
-Discovery only registers `transformers.js` text-generation repositories that expose a supported `onnx/model*.onnx` file. It also records the matching dtype, so models such as `gpt-oss-20b-ONNX` use `q4f16` instead of the global default `q4`.
+Discovery only registers `transformers.js` text-generation repositories that expose a supported `onnx/model*.onnx` file. It also records the matching dtype, so models such as `gpt-oss-20b-ONNX` use `q4f16` instead of the global default `q4`. If a discovered model is also pinned in `models` without an explicit `dtype`, discovery fills in that dtype automatically.
 
 ### `tools.embed`
 
