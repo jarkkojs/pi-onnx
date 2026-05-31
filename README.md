@@ -48,6 +48,7 @@ cp example-config.json ~/.pi/agent/pi-onnx.json
 | `dtype`         | `Dtype`  | `defaultDtype` | Quantization for this model only.                    |
 
 Only `id` is required; the `onnx-community/` prefix is added if missing.
+Pinned models are checked against the Hugging Face Hub when possible. Repositories that are not compatible with `@huggingface/transformers` text generation, such as `onnxruntime-genai` image-text-to-text exports, are skipped instead of being offered as broken chat models.
 
 Example:
 

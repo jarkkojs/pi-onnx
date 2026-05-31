@@ -1,6 +1,15 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
-import { mergeModels } from "../src/index.js";
+import { mergeModels, validatePinnedModels } from "../src/index.js";
+
+function response(body: unknown, ok = true): Response {
+	return {
+		ok,
+		status: ok ? 200 : 503,
+		statusText: ok ? "OK" : "Service Unavailable",
+		json: async () => body,
+	} as Response;
+}
 
 it("uses discovered dtype for pinned models without explicit dtype", () => {
 	const merged = mergeModels(
@@ -54,4 +63,47 @@ it("keeps explicit pinned dtype over discovered dtype", () => {
 			dtype: "q8",
 		},
 	]);
+});
+
+it("skips pinned models that are not Transformers.js text-generation repositories", async () => {
+	const previousFetch = globalThis.fetch;
+	globalThis.fetch = (async () =>
+		response({
+			id: "onnx-community/Qwen3.6-27B-Onnx",
+			library_name: "onnxruntime-genai",
+			pipeline_tag: "image-text-to-text",
+			tags: ["onnxruntime-genai", "image-text-to-text"],
+			siblings: [{ rfilename: "model.onnx" }],
+		})) as typeof fetch;
+
+	try {
+		const validation = await validatePinnedModels([
+			{
+				id: "onnx-community/Qwen3.6-27B-Onnx",
+			},
+		]);
+
+		assert.deepEqual(validation.discovered, []);
+		assert.equal(validation.skipped[0]?.id, "onnx-community/Qwen3.6-27B-Onnx");
+		assert.match(validation.skipped[0]?.reason ?? "", /not transformers\.js/);
+	} finally {
+		globalThis.fetch = previousFetch;
+	}
+});
+
+it("keeps pinned models when compatibility lookup fails", async () => {
+	const previousFetch = globalThis.fetch;
+	globalThis.fetch = (async () => response({}, false)) as typeof fetch;
+
+	try {
+		const validation = await validatePinnedModels([
+			{
+				id: "onnx-community/private-or-cached-model",
+			},
+		]);
+
+		assert.deepEqual(validation, { discovered: [], skipped: [] });
+	} finally {
+		globalThis.fetch = previousFetch;
+	}
 });

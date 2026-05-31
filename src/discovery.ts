@@ -15,11 +15,20 @@ export interface DiscoveryOptions {
 	signal?: AbortSignal;
 }
 
-interface HubSibling {
+export interface IncompatibleModel {
+	id: string;
+	reason: string;
+}
+
+export type HubModelInspection =
+	| { compatible: true; model: DiscoveredModel }
+	| { compatible: false; model: IncompatibleModel };
+
+export interface HubSibling {
 	rfilename?: string;
 }
 
-interface HubModel {
+export interface HubModel {
 	id?: string;
 	modelId?: string;
 	library_name?: string;
@@ -57,13 +66,14 @@ function modelId(model: HubModel): string | undefined {
 	return model.id ?? model.modelId;
 }
 
-function isTransformersJsTextGenerationModel(model: HubModel): boolean {
+function usesTransformersJs(model: HubModel): boolean {
 	const tags = model.tags ?? [];
-	const usesTransformersJs = model.library_name === TRANSFORMERS_JS || tags.includes(TRANSFORMERS_JS);
-	const isTextGeneration = model.pipeline_tag
-		? model.pipeline_tag === SUPPORTED_PIPELINE_TAG
-		: tags.includes(SUPPORTED_PIPELINE_TAG);
-	return usesTransformersJs && isTextGeneration;
+	return model.library_name === TRANSFORMERS_JS || tags.includes(TRANSFORMERS_JS);
+}
+
+function isTextGenerationModel(model: HubModel): boolean {
+	const tags = model.tags ?? [];
+	return model.pipeline_tag ? model.pipeline_tag === SUPPORTED_PIPELINE_TAG : tags.includes(SUPPORTED_PIPELINE_TAG);
 }
 
 function siblingFileSet(model: HubModel): Set<string> {
@@ -83,15 +93,32 @@ function preferredDtype(model: HubModel): Dtype | undefined {
 	return DISCOVERY_DTYPE_PREFERENCE.find((dtype) => hasModelFile(files, dtype));
 }
 
-function toDiscoveredModel(model: HubModel): DiscoveredModel | undefined {
+export function inspectHubModel(model: HubModel): HubModelInspection {
 	const id = modelId(model);
-	if (!id || !id.startsWith(HF_PREFIX)) return undefined;
-	if (!isTransformersJsTextGenerationModel(model)) return undefined;
+	if (!id) return { compatible: false, model: { id: "(unknown)", reason: "missing model id" } };
+	if (!id.startsWith(HF_PREFIX)) {
+		return { compatible: false, model: { id, reason: `not an ${HF_PREFIX} repository` } };
+	}
+	if (!usesTransformersJs(model)) {
+		const library = model.library_name ?? "unknown";
+		return { compatible: false, model: { id, reason: `library ${library} is not ${TRANSFORMERS_JS}` } };
+	}
+	if (!isTextGenerationModel(model)) {
+		const pipeline = model.pipeline_tag ?? "unknown";
+		return { compatible: false, model: { id, reason: `pipeline ${pipeline} is not ${SUPPORTED_PIPELINE_TAG}` } };
+	}
 
 	const dtype = preferredDtype(model);
-	if (!dtype) return undefined;
+	if (!dtype) {
+		return { compatible: false, model: { id, reason: "no supported onnx/model*.onnx file" } };
+	}
 
-	return { id, name: id.slice(HF_PREFIX.length), dtype };
+	return { compatible: true, model: { id, name: id.slice(HF_PREFIX.length), dtype } };
+}
+
+function toDiscoveredModel(model: HubModel): DiscoveredModel | undefined {
+	const inspection = inspectHubModel(model);
+	return inspection.compatible ? inspection.model : undefined;
 }
 
 async function fetchByPipelineTag(
@@ -113,6 +140,22 @@ async function fetchByPipelineTag(
 	});
 	if (!res.ok) throw new Error(`HF Hub ${res.status} ${res.statusText}`);
 	return (await res.json()) as HubModel[];
+}
+
+function modelApiUrl(id: string): URL {
+	const url = new URL("https://huggingface.co/api/models/");
+	url.pathname = `/api/models/${id.split("/").map(encodeURIComponent).join("/")}`;
+	url.searchParams.set("blobs", "false");
+	return url;
+}
+
+export async function fetchHubModel(id: string, signal: AbortSignal): Promise<HubModel> {
+	const res = await fetch(modelApiUrl(id), {
+		signal,
+		headers: { "User-Agent": "pi-onnx" },
+	});
+	if (!res.ok) throw new Error(`HF Hub ${res.status} ${res.statusText}`);
+	return (await res.json()) as HubModel;
 }
 
 export async function discoverOnnxCommunityModels(opts: DiscoveryOptions): Promise<DiscoveredModel[]> {

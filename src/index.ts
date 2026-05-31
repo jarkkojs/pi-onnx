@@ -3,7 +3,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { configPath, hubPath, loadConfig, stripPrefix, type Config, type ModelEntry } from "./config.js";
-import { discoverOnnxCommunityModels, type DiscoveredModel } from "./discovery.js";
+import { discoverOnnxCommunityModels, fetchHubModel, inspectHubModel, type DiscoveredModel, type IncompatibleModel } from "./discovery.js";
 import { createOnnxStreamFunction, ONNX_API, ONNX_PROVIDER } from "./provider.js";
 import { registerAllTools } from "./tools.js";
 import { configureRuntime, loadPipeline } from "./runtime.js";
@@ -54,6 +54,37 @@ export function mergeModels(pinned: ModelEntry[], discovered: DiscoveredModel[])
 		out.push({ id: d.id, name: d.name, dtype: d.dtype });
 	}
 	return out;
+}
+
+export interface PinnedModelValidation {
+	discovered: DiscoveredModel[];
+	skipped: IncompatibleModel[];
+}
+
+export async function validatePinnedModels(
+	models: ModelEntry[],
+	signal: AbortSignal = AbortSignal.timeout(10_000),
+): Promise<PinnedModelValidation> {
+	const results = await Promise.all(
+		models.map(async (model): Promise<DiscoveredModel | IncompatibleModel | null> => {
+			try {
+				const hubModel = await fetchHubModel(hubPath(model.id), signal);
+				const inspection = inspectHubModel(hubModel);
+				return inspection.model;
+			} catch {
+				return null;
+			}
+		}),
+	);
+
+	const discovered: DiscoveredModel[] = [];
+	const skipped: IncompatibleModel[] = [];
+	for (const result of results) {
+		if (!result) continue;
+		if ("reason" in result) skipped.push(result);
+		else discovered.push(result);
+	}
+	return { discovered, skipped };
 }
 
 const WIDGET_KEY = "onnx-preload";
@@ -167,7 +198,13 @@ export default async function (pi: ExtensionAPI) {
 		}
 	}
 
-	const effectiveConfig: Config = { ...config, models: mergeModels(config.models, discovered) };
+	const pinnedValidation = await validatePinnedModels(config.models);
+	const skippedPinnedIds = new Set(pinnedValidation.skipped.map((model) => hubPath(model.id)));
+	const pinnedModels = config.models.filter((model) => !skippedPinnedIds.has(hubPath(model.id)));
+	const effectiveConfig: Config = {
+		...config,
+		models: mergeModels(pinnedModels, [...discovered, ...pinnedValidation.discovered]),
+	};
 	const streamSimple = createOnnxStreamFunction(effectiveConfig);
 	pi.registerProvider(ONNX_PROVIDER, buildProviderConfig(effectiveConfig.models, streamSimple));
 
@@ -205,6 +242,12 @@ export default async function (pi: ExtensionAPI) {
 			lines.push(`pinned models:`);
 			for (const m of config.models) {
 				lines.push(`  - ${m.id}${m.name ? ` (${m.name})` : ""}  dtype=${m.dtype ?? config.defaultDtype}`);
+			}
+			if (pinnedValidation.skipped.length > 0) {
+				lines.push(`skipped pinned models:`);
+				for (const m of pinnedValidation.skipped) {
+					lines.push(`  - ${m.id}: ${m.reason}`);
+				}
 			}
 			lines.push(`discovered models: ${discovered.length}`);
 			for (const m of discovered.slice(0, 20)) {
