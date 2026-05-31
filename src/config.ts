@@ -34,6 +34,7 @@ export interface TranscribeToolConfig {
 	model: string;
 	language: string | null;
 	task: "transcribe" | "translate";
+	maxDecodedBytes: number;
 }
 
 export const HF_PREFIX = "onnx-community/";
@@ -74,6 +75,7 @@ const DEVICES: readonly Device[] = ["cpu", "webgpu", "wasm", "gpu"];
 const PIPELINE_TAGS: readonly PipelineTag[] = ["text-generation", "image-text-to-text", "any-to-any"];
 const POOLING_VALUES: readonly EmbedToolConfig["pooling"][] = ["mean", "cls"];
 const TRANSCRIBE_TASKS: readonly TranscribeToolConfig["task"][] = ["transcribe", "translate"];
+const DEFAULT_MAX_DECODED_BYTES = 256 * 1024 * 1024;
 
 const DEFAULTS: Config = {
 	cacheDir: null,
@@ -91,7 +93,7 @@ const DEFAULTS: Config = {
 	discovery: {
 		enabled: true,
 		limit: 50,
-		pipelineTags: ["text-generation", "image-text-to-text", "any-to-any"],
+		pipelineTags: [...PIPELINE_TAGS],
 	},
 	tools: {
 		embed: {
@@ -110,6 +112,7 @@ const DEFAULTS: Config = {
 			model: "onnx-community/whisper-tiny",
 			language: null,
 			task: "transcribe",
+			maxDecodedBytes: DEFAULT_MAX_DECODED_BYTES,
 		},
 	},
 };
@@ -298,6 +301,12 @@ function readTools(src: Record<string, unknown>): Config["tools"] {
 				DEFAULTS.tools.transcribe.language,
 			),
 			task: readEnum(transcribe, "task", "tools.transcribe.task", TRANSCRIBE_TASKS, DEFAULTS.tools.transcribe.task),
+			maxDecodedBytes: readPositiveInteger(
+				transcribe,
+				"maxDecodedBytes",
+				"tools.transcribe.maxDecodedBytes",
+				DEFAULTS.tools.transcribe.maxDecodedBytes,
+			),
 		},
 	};
 }

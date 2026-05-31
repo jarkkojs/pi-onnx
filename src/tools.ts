@@ -37,7 +37,12 @@ function getAsrSamplingRate(pipeline: unknown): number {
 	return typeof rate === "number" && Number.isFinite(rate) && rate > 0 ? rate : 16000;
 }
 
-function decodeAudioFile(path: string, samplingRate: number, signal: AbortSignal | undefined): Promise<Float32Array> {
+function decodeAudioFile(
+	path: string,
+	samplingRate: number,
+	signal: AbortSignal | undefined,
+	maxDecodedBytes: number,
+): Promise<Float32Array> {
 	if (signal?.aborted) return Promise.reject(new Error("aborted"));
 	if (!existsSync(path)) return Promise.reject(new Error(`Audio file not found: ${path}`));
 
@@ -58,6 +63,7 @@ function decodeAudioFile(path: string, samplingRate: number, signal: AbortSignal
 		const stdout: Buffer[] = [];
 		const stderr: Buffer[] = [];
 		let settled = false;
+		let decodedBytes = 0;
 
 		const finish = (err: Error | null, audio?: Float32Array) => {
 			if (settled) return;
@@ -72,7 +78,16 @@ function decodeAudioFile(path: string, samplingRate: number, signal: AbortSignal
 		};
 
 		signal?.addEventListener("abort", onAbort, { once: true });
-		child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+		child.stdout.on("data", (chunk: Buffer) => {
+			if (settled) return;
+			decodedBytes += chunk.byteLength;
+			if (decodedBytes > maxDecodedBytes) {
+				child.kill("SIGTERM");
+				finish(new Error(`Decoded audio for ${path} exceeded ${maxDecodedBytes} bytes`));
+				return;
+			}
+			stdout.push(chunk);
+		});
 		child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
 		child.once("error", (err) => {
 			finish(new Error(`Failed to start ffmpeg for audio decoding: ${err.message}`));
@@ -275,7 +290,13 @@ export function registerTranscribeTool(pi: ExtensionAPI, config: Config): void {
 
 			const language = params.language ?? config.tools.transcribe.language ?? undefined;
 			const task = params.task ?? config.tools.transcribe.task;
-			const audio = await decodeAudioFile(params.path, getAsrSamplingRate(pipeline), signal);
+			const maxDecodedBytes = config.tools.transcribe.maxDecodedBytes;
+			const audio = await decodeAudioFile(
+				params.path,
+				getAsrSamplingRate(pipeline),
+				signal,
+				maxDecodedBytes,
+			);
 
 			const result = (await pipeline(audio, {
 				language,

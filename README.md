@@ -88,12 +88,13 @@ Example:
 
 ### `tools.transcribe`
 
-| Field      | Type                            | Default                       | Notes                                |
-| ---------- | ------------------------------- | ----------------------------- | ------------------------------------ |
-| `enabled`  | `boolean`                       | `false`                       | Toggles `onnx_transcribe`.           |
-| `model`    | `string`                        | `onnx-community/whisper-tiny` | Any ASR model.                       |
-| `language` | `string \| null`                | `null`                        | Default language hint (e.g. `"en"`). |
-| `task`     | `"transcribe" \| "translate"`   | `"transcribe"`                | Default ASR task.                    |
+| Field             | Type                            | Default                       | Notes                                             |
+| ----------------- | ------------------------------- | ----------------------------- | ------------------------------------------------- |
+| `enabled`         | `boolean`                       | `false`                       | Toggles `onnx_transcribe`.                        |
+| `model`           | `string`                        | `onnx-community/whisper-tiny` | Any ASR model.                                    |
+| `language`        | `string \| null`                | `null`                        | Default language hint (e.g. `"en"`).              |
+| `task`            | `"transcribe" \| "translate"`   | `"transcribe"`                | Default ASR task.                                 |
+| `maxDecodedBytes` | `number`                        | `268435456`                   | Maximum decoded f32 audio bytes to buffer in RAM. |
 
 ## Limitations
 
@@ -101,7 +102,7 @@ Example:
 - Tokens are approximated from the tokenizer.
 - First call to a model blocks while weights download.
 - `onnx_transcribe` shells out to `ffmpeg` (must be on `PATH`) to decode the
-  input audio file to a `Float32Array` before inference.
+  input audio file to a `Float32Array` before inference, capped by `maxDecodedBytes`.
 
 ## License
 

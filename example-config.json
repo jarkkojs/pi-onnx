@@ -40,7 +40,8 @@
       "enabled": false,
       "model": "onnx-community/whisper-tiny",
       "language": null,
-      "task": "transcribe"
+      "task": "transcribe",
+      "maxDecodedBytes": 268435456
     }
   }
 }
