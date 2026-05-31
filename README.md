@@ -1,7 +1,6 @@
 # pi-onnx
 
 Runs [Hugging Face onnx-community](https://huggingface.co/onnx-community) models locally inside the pi coding agent using [`@huggingface/transformers`](https://www.npmjs.com/package/@huggingface/transformers).
-the Pi coding agent using [`@huggingface/transformers`](https://www.npmjs.com/package/@huggingface/transformers).
 
 Implements a chat provider and several tool calls:
 
@@ -75,7 +74,7 @@ Example:
 | ----------- | --------------------------- | ----------------------------------- | ------------------------------ |
 | `enabled`   | `boolean`                   | `true`                              | Toggles `onnx_embed`.          |
 | `model`     | `string`                    | `onnx-community/all-MiniLM-L6-v2`   | Any feature-extraction model.  |
-| `pooling`   | `"mean" \| "cls" \| "none"` | `"mean"`                            | Pooling strategy.              |
+| `pooling`   | `"mean" \| "cls"`           | `"mean"`                            | Pooling strategy.              |
 | `normalize` | `boolean`                   | `true`                              | L2-normalize output vectors.   |
 
 ### `tools.classify`

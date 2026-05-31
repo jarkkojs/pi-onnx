@@ -71,7 +71,7 @@ export interface Config {
 const DTYPES: readonly Dtype[] = ["fp32", "fp16", "q8", "int8", "uint8", "q4", "bnb4", "q4f16"];
 const DEVICES: readonly Device[] = ["cpu", "webgpu", "wasm", "gpu"];
 const PIPELINE_TAGS: readonly PipelineTag[] = ["text-generation", "image-text-to-text", "any-to-any"];
-const POOLING_VALUES: readonly EmbedToolConfig["pooling"][] = ["mean", "cls", "none"];
+const POOLING_VALUES: readonly EmbedToolConfig["pooling"][] = ["mean", "cls"];
 const TRANSCRIBE_TASKS: readonly TranscribeToolConfig["task"][] = ["transcribe", "translate"];
 
 const DEFAULTS: Config = {

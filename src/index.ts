@@ -59,19 +59,23 @@ async function preloadModel(config: Config, entry: ModelEntry, ctx: ExtensionCon
 		ctx.ui.setStatus("onnx", undefined);
 	};
 
+	const seenPct = new Map<string, number>();
+	let sessionHintTimer: ReturnType<typeof setTimeout> | null = null;
+	let readySeen = false;
+	const clearSessionHint = () => {
+		if (!sessionHintTimer) return;
+		clearTimeout(sessionHintTimer);
+		sessionHintTimer = null;
+	};
+	const armSessionHint = () => {
+		clearSessionHint();
+		sessionHintTimer = setTimeout(() => {
+			show(`ONNX │ ${label} │ constructing session\u2026`);
+		}, 5000);
+	};
+
 	try {
 		await configureRuntime(config);
-
-		const seenPct = new Map<string, number>();
-		let sessionHintTimer: ReturnType<typeof setTimeout> | null = null;
-		let readySeen = false;
-
-		const armSessionHint = () => {
-			if (sessionHintTimer) clearTimeout(sessionHintTimer);
-			sessionHintTimer = setTimeout(() => {
-				show(`ONNX │ ${label} │ constructing session\u2026`);
-			}, 5000);
-		};
 
 		armSessionHint();
 
@@ -112,7 +116,7 @@ async function preloadModel(config: Config, entry: ModelEntry, ctx: ExtensionCon
 					armSessionHint();
 				} else if (p.status === "ready") {
 					readySeen = true;
-					if (sessionHintTimer) clearTimeout(sessionHintTimer);
+					clearSessionHint();
 					ctx.ui.setStatus("onnx", `ONNX \u2713 ${label} ready`);
 					ctx.ui.setWidget(WIDGET_KEY, undefined);
 					setTimeout(clear, 4000);
@@ -120,16 +124,18 @@ async function preloadModel(config: Config, entry: ModelEntry, ctx: ExtensionCon
 			},
 		});
 
-		if (sessionHintTimer) clearTimeout(sessionHintTimer);
+		clearSessionHint();
 
 		if (!readySeen) {
 			// Pipeline was served from memory cache — no progress events fired.
 			clear();
 		}
-	} catch {
-		ctx.ui.setWidget(WIDGET_KEY, undefined);
-		ctx.ui.setStatus("onnx", undefined);
-	}
+	} catch (err) {
+		clearSessionHint();
+		const message = err instanceof Error ? err.message : String(err);
+		show(`ONNX │ ${label} │ preload failed: ${message}`);
+		setTimeout(clear, 8000);
+}
 }
 
 export default function (pi: ExtensionAPI) {

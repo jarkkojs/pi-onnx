@@ -115,6 +115,9 @@ export function registerEmbedTool(pi: ExtensionAPI, config: Config): void {
 			onUpdate?: AgentToolUpdateCallback<{ model: string; dim: number; vectors: number[][] }>,
 		) {
 			const initial = { model: config.tools.embed.model, dim: 0, vectors: [] as number[][] };
+			if (config.tools.embed.pooling === "none") {
+				throw new Error('onnx_embed does not support tools.embed.pooling="none"; use "mean" or "cls".');
+			}
 			await configureRuntime(config);
 			onUpdate?.(progress(`Loading ${config.tools.embed.model}…`, initial));
 

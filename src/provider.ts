@@ -5,6 +5,7 @@ import type {
 	Api,
 	AssistantMessage,
 	AssistantMessageEventStream,
+	AssistantMessageEvent,
 	Context,
 	Message,
 	Model,
@@ -127,8 +128,19 @@ export function createOnnxStreamFunction(config: Config) {
 
 			let contentIndex = -1;
 			let accumulated = "";
+			let aborted = options?.signal?.aborted === true;
+			let closed = false;
+			const pushSafe = (event: AssistantMessageEvent) => {
+				if (closed) return;
+				stream.push(event);
+			};
+			const endStream = () => {
+				if (closed) return;
+				closed = true;
+				stream.end();
+			};
 
-			stream.push({ type: "start", partial: output });
+			pushSafe({ type: "start", partial: output });
 			try {
 				await configureRuntime(config);
 
@@ -160,13 +172,13 @@ export function createOnnxStreamFunction(config: Config) {
 
 				output.content.push({ type: "text", text: "" });
 				contentIndex = output.content.length - 1;
-				stream.push({ type: "text_start", contentIndex, partial: output });
+				pushSafe({ type: "text_start", contentIndex, partial: output });
 
 				const streamer = await getTextStreamer(tokenizer, (chunk: string) => {
-					if (!chunk) return;
+					if (!chunk || aborted || closed) return;
 					accumulated += chunk;
 					(output.content[contentIndex] as { text: string }).text = accumulated;
-					stream.push({
+					pushSafe({
 						type: "text_delta",
 						contentIndex,
 						delta: chunk,
@@ -178,17 +190,20 @@ export function createOnnxStreamFunction(config: Config) {
 				const temperature = mapTemperature(options?.reasoning, options?.temperature);
 				const doSample = temperature > 0;
 
+				const signal = options?.signal;
+				let abortHandler: (() => void) | null = null;
 				const abortPromise = new Promise<never>((_, reject) => {
-					if (!options?.signal) return;
-					if (options.signal.aborted) {
+					if (!signal) return;
+					if (signal.aborted) {
+						aborted = true;
 						reject(new Error("Request was aborted"));
 						return;
 					}
-					options.signal.addEventListener(
-						"abort",
-						() => reject(new Error("Request was aborted")),
-						{ once: true },
-					);
+					abortHandler = () => {
+						aborted = true;
+						reject(new Error("Request was aborted"));
+					};
+					signal.addEventListener("abort", abortHandler, { once: true });
 				});
 
 				const generatePromise = pipeline(chat as any, {
@@ -199,7 +214,11 @@ export function createOnnxStreamFunction(config: Config) {
 					return_full_text: false,
 				}) as Promise<unknown>;
 
-				await (options?.signal ? Promise.race([generatePromise, abortPromise]) : generatePromise);
+				try {
+					await (signal ? Promise.race([generatePromise, abortPromise]) : generatePromise);
+				} finally {
+					if (signal && abortHandler) signal.removeEventListener("abort", abortHandler);
+				}
 
 				let outputTokens = 0;
 				try {
@@ -216,7 +235,7 @@ export function createOnnxStreamFunction(config: Config) {
 				output.usage.totalTokens = output.usage.input + output.usage.output;
 				calculateCost(model, output.usage);
 
-				stream.push({
+				pushSafe({
 					type: "text_end",
 					contentIndex,
 					content: accumulated,
@@ -225,26 +244,26 @@ export function createOnnxStreamFunction(config: Config) {
 
 				if (outputTokens >= maxNewTokens) output.stopReason = "length";
 
-				stream.push({
+				pushSafe({
 					type: "done",
 					reason: output.stopReason as Extract<StopReason, "stop" | "length" | "toolUse">,
 					message: output,
 				});
-				stream.end();
+				endStream();
 			} catch (error) {
-				const aborted = options?.signal?.aborted === true;
-				output.stopReason = aborted ? "aborted" : "error";
+				const wasAborted = aborted || options?.signal?.aborted === true;
+				output.stopReason = wasAborted ? "aborted" : "error";
 				output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-				if (contentIndex >= 0) {
-					stream.push({
+				if (!closed && contentIndex >= 0) {
+					pushSafe({
 						type: "text_end",
 						contentIndex,
 						content: accumulated,
 						partial: output,
 					});
 				}
-				stream.push({ type: "error", reason: output.stopReason, error: output });
-				stream.end();
+				pushSafe({ type: "error", reason: output.stopReason, error: output });
+				endStream();
 			}
 		})();
 
