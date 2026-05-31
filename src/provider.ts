@@ -20,6 +20,18 @@ import { configureRuntime, getTextStreamer, loadPipeline } from "./runtime.js";
 export const ONNX_API: Api = "onnx";
 export const ONNX_PROVIDER = "onnx";
 
+export interface OnnxRuntimeDeps {
+	configureRuntime: typeof configureRuntime;
+	loadPipeline: typeof loadPipeline;
+	getTextStreamer: typeof getTextStreamer;
+}
+
+const DEFAULT_RUNTIME_DEPS: OnnxRuntimeDeps = {
+	configureRuntime,
+	loadPipeline,
+	getTextStreamer,
+};
+
 interface ChatMessage {
 	role: "system" | "user" | "assistant";
 	content: string;
@@ -99,7 +111,7 @@ function mapTemperature(reasoning: SimpleStreamOptions["reasoning"] | undefined,
 	}
 }
 
-export function createOnnxStreamFunction(config: Config) {
+export function createOnnxStreamFunction(config: Config, deps: OnnxRuntimeDeps = DEFAULT_RUNTIME_DEPS) {
 	return function streamOnnx(
 		model: Model<Api>,
 		context: Context,
@@ -142,13 +154,13 @@ export function createOnnxStreamFunction(config: Config) {
 
 			pushSafe({ type: "start", partial: output });
 			try {
-				await configureRuntime(config);
+				await deps.configureRuntime(config);
 
 				const entry = findModelEntry(config, model.id);
 				const dtype = resolveDtype(config, entry);
 				const fullModelId = hubPath(model.id);
 
-				const { pipeline } = await loadPipeline("text-generation", fullModelId, {
+				const { pipeline } = await deps.loadPipeline("text-generation", fullModelId, {
 					device: config.device,
 					dtype,
 				});
@@ -174,7 +186,7 @@ export function createOnnxStreamFunction(config: Config) {
 				contentIndex = output.content.length - 1;
 				pushSafe({ type: "text_start", contentIndex, partial: output });
 
-				const streamer = await getTextStreamer(tokenizer, (chunk: string) => {
+				const streamer = await deps.getTextStreamer(tokenizer, (chunk: string) => {
 					if (!chunk || aborted || closed) return;
 					accumulated += chunk;
 					(output.content[contentIndex] as { text: string }).text = accumulated;

@@ -25,14 +25,15 @@ cp example-config.json ~/.pi/agent/pi-onnx.json
 
 ### Top-level
 
-| Field          | Type                                   | Default                           | Notes                                                     |
-| -------------- | -------------------------------------- | --------------------------------- | --------------------------------------------------------- |
-| `cacheDir`     | `string \| null`                       | `null` (HF default)               | Forwarded to `env.cacheDir`.                              |
-| `device`       | `"cpu" \| "webgpu" \| "wasm" \| "gpu"` | `"cpu"`                           | onnxruntime execution provider hint.                      |
-| `defaultDtype` | `Dtype`                                | `"q4"`                            | Per-model `dtype` overrides this.                         |
-| `models`       | `ModelEntry[]`                         | `[Qwen2.5-Coder-0.5B-Instruct]`   | Each entry becomes a `onnx-community/<id>` chat model.    |
-| `discovery`    | object                                 | enabled, limit 50                 | Append popular `onnx-community/*` models from the HF Hub. |
-| `tools`        | object                                 | `embed` only                      | Toggles for `onnx_embed` / `_classify` / `_transcribe`.   |
+| Field                 | Type                                   | Default                           | Notes                                                     |
+| --------------------- | -------------------------------------- | --------------------------------- | --------------------------------------------------------- |
+| `cacheDir`            | `string \| null`                       | `null` (HF default)               | Forwarded to `env.cacheDir`.                              |
+| `device`              | `"cpu" \| "webgpu" \| "wasm" \| "gpu"` | `"cpu"`                           | onnxruntime execution provider hint.                      |
+| `defaultDtype`        | `Dtype`                                | `"q4"`                            | Per-model `dtype` overrides this.                         |
+| `preloadDefaultModel` | `boolean`                              | `false`                           | Preload the first configured model on session start.      |
+| `models`              | `ModelEntry[]`                         | `[Qwen2.5-Coder-0.5B-Instruct]`   | Each entry becomes a `onnx-community/<id>` chat model.    |
+| `discovery`           | object                                 | enabled, limit 50                 | Append popular `onnx-community/*` models from the HF Hub. |
+| `tools`               | object                                 | `embed` only                      | Toggles for `onnx_embed` / `_classify` / `_transcribe`.   |
 
 `Dtype` is one of `"fp32"`, `"fp16"`, `"q8"`, `"int8"`, `"uint8"`, `"q4"`, `"bnb4"`, `"q4f16"`.
 

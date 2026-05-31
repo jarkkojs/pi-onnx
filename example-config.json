@@ -2,6 +2,7 @@
   "cacheDir": null,
   "device": "cpu",
   "defaultDtype": "q4",
+  "preloadDefaultModel": false,
   "discovery": {
     "enabled": true,
     "limit": 50,

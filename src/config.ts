@@ -58,6 +58,7 @@ export interface Config {
 	cacheDir: string | null;
 	device: Device;
 	defaultDtype: Dtype;
+	preloadDefaultModel: boolean;
 	/** Models always shown. `[]` + discovery.enabled = discovery only. */
 	models: ModelEntry[];
 	discovery: DiscoveryConfig;
@@ -78,6 +79,7 @@ const DEFAULTS: Config = {
 	cacheDir: null,
 	device: "cpu",
 	defaultDtype: "q4",
+	preloadDefaultModel: false,
 	models: [
 		{
 			id: "onnx-community/Qwen2.5-Coder-0.5B-Instruct",
@@ -117,6 +119,7 @@ function cloneConfig(config: Config): Config {
 		cacheDir: config.cacheDir,
 		device: config.device,
 		defaultDtype: config.defaultDtype,
+		preloadDefaultModel: config.preloadDefaultModel,
 		models: config.models.map((model) => ({ ...model })),
 		discovery: {
 			...config.discovery,
@@ -323,12 +326,13 @@ export function loadConfig(): Config {
 	return mergeConfig(parsed);
 }
 
-function mergeConfig(input: unknown): Config {
+export function mergeConfig(input: unknown): Config {
 	if (!isRecord(input)) return cloneConfig(DEFAULTS);
 	return {
 		cacheDir: readStringOrNull(input, "cacheDir", "cacheDir", DEFAULTS.cacheDir),
 		device: readEnum(input, "device", "device", DEVICES, DEFAULTS.device),
 		defaultDtype: readEnum(input, "defaultDtype", "defaultDtype", DTYPES, DEFAULTS.defaultDtype),
+		preloadDefaultModel: readBoolean(input, "preloadDefaultModel", "preloadDefaultModel", DEFAULTS.preloadDefaultModel),
 		models: readModels(input),
 		discovery: readDiscovery(input),
 		tools: readTools(input),

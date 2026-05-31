@@ -164,8 +164,8 @@ export default function (pi: ExtensionAPI) {
 
 	registerAllTools(pi, config);
 
-	// Pre-warm the default model on session start.
 	pi.on("session_start", async (_event, ctx) => {
+		if (!config.preloadDefaultModel) return;
 		const defaultModel = config.models[0];
 		if (!defaultModel) return;
 		await preloadModel(config, defaultModel, ctx);
@@ -189,6 +189,7 @@ export default function (pi: ExtensionAPI) {
 			lines.push(`config: ${configPath()}`);
 			lines.push(`cacheDir: ${config.cacheDir ?? "(HF default)"}`);
 			lines.push(`device: ${config.device}   defaultDtype: ${config.defaultDtype}`);
+			lines.push(`preloadDefaultModel: ${config.preloadDefaultModel}`);
 			const discStatus = !config.discovery.enabled
 				? "disabled"
 				: discoveryError

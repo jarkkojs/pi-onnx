@@ -33,7 +33,8 @@
   "scripts": {
     "check": "tsc --noEmit",
     "build": "echo 'no build step — extension loads ./src/index.ts directly'",
-    "clean": "echo 'nothing to clean'"
+    "test": "tsc -p tsconfig.test.json && node --test .tmp-tests/tests/*.test.js",
+    "clean": "rm -rf .tmp-tests"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

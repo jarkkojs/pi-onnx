@@ -97,6 +97,12 @@ function decodeAudioFile(path: string, samplingRate: number, signal: AbortSignal
 	});
 }
 
+export function ensureSupportedEmbedPooling(pooling: Config["tools"]["embed"]["pooling"]): void {
+	if (pooling === "none") {
+		throw new Error('onnx_embed does not support tools.embed.pooling="none"; use "mean" or "cls".');
+	}
+}
+
 export function registerEmbedTool(pi: ExtensionAPI, config: Config): void {
 	if (!config.tools.embed.enabled) return;
 
@@ -115,9 +121,7 @@ export function registerEmbedTool(pi: ExtensionAPI, config: Config): void {
 			onUpdate?: AgentToolUpdateCallback<{ model: string; dim: number; vectors: number[][] }>,
 		) {
 			const initial = { model: config.tools.embed.model, dim: 0, vectors: [] as number[][] };
-			if (config.tools.embed.pooling === "none") {
-				throw new Error('onnx_embed does not support tools.embed.pooling="none"; use "mean" or "cls".');
-			}
+			ensureSupportedEmbedPooling(config.tools.embed.pooling);
 			await configureRuntime(config);
 			onUpdate?.(progress(`Loading ${config.tools.embed.model}…`, initial));
 
